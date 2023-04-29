@@ -17,6 +17,7 @@ from utils.common import initialize_weights
 from utils.image_processing import denormalize_input
 from dataset import AnimeDataSet
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 gaussian_mean = torch.tensor(0.0)
 gaussian_std = torch.tensor(0.1)
@@ -191,6 +192,7 @@ def main(args):
         except Exception as e:
             print('Could not load G init checkpoint, train from scratch', e)
 
+    writer = SummaryWriter('{}/logs'.format(args.checkpoint_dir))
     for e in range(start_e, args.epochs):
         print(f"Epoch {e}/{args.epochs}")
         bar = tqdm(data_loader)
@@ -221,6 +223,7 @@ def main(args):
             continue
 
         loss_tracker.reset()
+        
         for img, anime, anime_gray, anime_smt_gray in bar:
             # To cuda
             img = img.cuda()
@@ -270,13 +273,19 @@ def main(args):
 
             avg_adv, avg_gram, avg_color, avg_content = loss_tracker.avg_loss_G()
             avg_adv_d = loss_tracker.avg_loss_D()
+            writer.add_scalar('Loss/D', loss_d.item(), e)
+            writer.add_scalar('Loss/G/Adv', adv_loss.item(), e)
+            writer.add_scalar('Loss/G/Con', con_loss.item(), e)
+            writer.add_scalar('Loss/G/Gra', gra_loss.item(), e)
+            writer.add_scalar('Loss/G/Color', col_loss.item(), e)
             bar.set_description(f'loss G: adv {avg_adv:2f} con {avg_content:2f} gram {avg_gram:2f} color {avg_color:2f} / loss D: {avg_adv_d:2f}')
-
+    
         if e % args.save_interval == 0:
             save_checkpoint(G, optimizer_g, e, args)
             save_checkpoint(D, optimizer_d, e, args)
             save_samples(G, data_loader, args)
-
+    # close the summary writer
+    writer.close()
 
 if __name__ == '__main__':
     args = parse_args()
